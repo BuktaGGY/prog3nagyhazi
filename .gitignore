@@ -1,0 +1,17 @@
+# Lefordított Java fájlok
+*.class
+
+# IDE specifikus mappák (IntelliJ, Eclipse, VSCode)
+.idea/
+.project
+.classpath
+.settings/
+.vscode/
+
+# Build kimenetek
+out/
+build/
+target/
+
+# Log fájlok
+*.log

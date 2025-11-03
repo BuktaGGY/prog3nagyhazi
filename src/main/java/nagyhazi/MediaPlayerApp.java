@@ -11,7 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
+import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
@@ -35,6 +37,10 @@ import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
+// ÚJ IMPORT-ok a JSlider és a ChangeListener számára
+import javax.swing.JSlider;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.ChangeEvent;
 
 public class MediaPlayerApp extends JFrame {
     private MediaPlayerController controller;
@@ -46,13 +52,13 @@ public class MediaPlayerApp extends JFrame {
     private JScrollPane scrollPane;
     private JProgressBar progressBar;
     
+    private JSlider volumeSlider;
+    
     private final String MEDIA_FOLDER = "media";
     private Action deleteAction, copyAction, pasteAction, cutAction;
     
     public MediaPlayerApp() {
         controller = new MediaPlayerController();
-
-        // Ikonok betöltése rész eltávolítva
 
         initializeUI();
         createKeyboardShortcuts();
@@ -96,12 +102,20 @@ public class MediaPlayerApp extends JFrame {
     private void createMainPanel() {
         JPanel mainPanel = new JPanel(new BorderLayout());
         
+        // Control panel (kommentben marad, ahogy nálad is volt)
+        // JPanel controlPanel = new JPanel();
         
         // Gomb létrehozása szöveggel
         playPauseButton = new JButton("Play"); 
         
+        // Ikonos beállítások eltávolítva
+        // if (playIcon != null) { ... }
+        // playPauseButton.setPreferredSize(new Dimension(60, 60));
+        // playPauseButton.setBorderPainted(false);
+        // playPauseButton.setContentAreaFilled(false);
         
         stopButton = new JButton("Stop");
+        
         
         // Új, okosabb ActionListener
         playPauseButton.addActionListener(e -> handlePlayPause()); 
@@ -122,10 +136,30 @@ public class MediaPlayerApp extends JFrame {
         progressBar.setStringPainted(true);
         progressBar.setString("00:00 / 00:00");
         
+        // --- ÚJ RÉSZ: Hangerő-szabályzó ---
+        volumeSlider = new JSlider(0, 100, 80); // Min, Max, Kezdőérték (80%)
+        volumeSlider.setToolTipText("Volume");
+        
+        // Listener, ami figyeli a csúszka változását
+        volumeSlider.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent e) {
+                // Csak akkor frissíts, ha a felhasználó "elengedte" a csúszkát
+                // (vagy ha nem kattintva állítja). Ez megakadályozza a túl sok eseményt.
+                //if (volumeSlider.getValueIsAdjusting()) { ezt még eldöntöm hogy lesz ha nagyon nem tetszik neki hogy sok az event akkor kikommentelem
+                    int volumePercent = volumeSlider.getValue();
+                    controller.setVolume(volumePercent);
+                //}
+            }
+        });
+
+        
         // A lejátszás vezérlő gombokat külön panelbe tesszük
         JPanel bottomControlsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         bottomControlsPanel.add(playPauseButton);
         bottomControlsPanel.add(stopButton);
+        bottomControlsPanel.add(new JLabel("Volume:"));
+        bottomControlsPanel.add(volumeSlider); 
 
         // Létrehozunk egy új panelt a déli (SOUTH) részre
         JPanel southPanel = new JPanel(new BorderLayout());
@@ -152,6 +186,7 @@ public class MediaPlayerApp extends JFrame {
         scrollPane = new JScrollPane(mediaTable);
         scrollPane.setComponentPopupMenu(backgroundContextMenu);
         
+        //mainPanel.add(controlPanel, BorderLayout.NORTH); // Kommentelve marad
         mainPanel.add(scrollPane, BorderLayout.CENTER);
         mainPanel.add(southPanel, BorderLayout.SOUTH);
         
@@ -187,6 +222,8 @@ public class MediaPlayerApp extends JFrame {
         getRootPane().getActionMap().put("pasteGlobal", pasteAction);
     }
     
+
+    //Jobb klikk menu
     private JPopupMenu createTableContextMenu() {
         JPopupMenu menu = new JPopupMenu();
         
@@ -221,6 +258,7 @@ public class MediaPlayerApp extends JFrame {
         return menu;
     }
     
+    //Jobbklikk menu
     private JPopupMenu createBackgroundContextMenu() {
         JPopupMenu menu = new JPopupMenu();
         
@@ -302,7 +340,25 @@ public class MediaPlayerApp extends JFrame {
                 }
             }
         }
-        return Duration.ofMinutes(3).plusSeconds(30); // Fallback
+        return Duration.ofMinutes(3).plusSeconds(30); 
+    }
+
+    
+    private Duration getMP3Duration(Path filePath) {
+        try {
+            AudioFileFormat fileFormat = AudioSystem.getAudioFileFormat(filePath.toFile());
+            Map<String, Object> properties = fileFormat.properties();
+
+            if(properties.containsKey("duration")){ //keresünk egy "duration" kulcsot és az ahhoz tartozó érték kell
+                long microseconds = (Long) properties.get("duration");
+                return Duration.ofNanos(microseconds * 1000);
+            }
+        } catch (Exception e) {
+            System.err.println("Error reading mediafile duration +" + e.getMessage());
+        }
+
+        //ha nem sikerült, akkor ez legyen default
+        return Duration.ofMinutes(3).plusSeconds(30);
     }
     
     private boolean addMediaFile(Path filePath) {
@@ -317,10 +373,7 @@ public class MediaPlayerApp extends JFrame {
                 duration = getWavDuration(filePath);
             } else if (lowerName.endsWith(".mp3")) {
                 type = MediaFile.MediaType.MP3;
-                duration = Duration.ofMinutes(3).plusSeconds(30); // MP3 időtartam becslés (ezt később javíthatod)
-            } else if (lowerName.endsWith(".mp4")) {
-                type = MediaFile.MediaType.MP4;
-                duration = Duration.ofMinutes(3).plusSeconds(30); // MP4 időtartam becslés (ezt később javíthatod)
+                duration = getMP3Duration(filePath); 
             } else {
                 return false;
             }
@@ -398,9 +451,6 @@ public class MediaPlayerApp extends JFrame {
             return;
         }
         
-        // Hozzáadtam a MediaFile.java-ba az equals és hashCode metódusokat? 
-        // Ha nem, akkor ez az összehasonlítás nem biztos, hogy működik.
-        // Feltételezem, hogy a MediaFile-ban van equals metódus filePath alapján.
         MediaFile selectedMedia = controller.getMediaLibrary().get(selectedRow);
         MediaFile currentMedia = controller.getCurrentMedia();
         
@@ -416,9 +466,15 @@ public class MediaPlayerApp extends JFrame {
         
         // 3. Eset: Új lejátszás (Másik szám van kiválasztva, vagy semmi sem megy)
         } else {
+
             boolean success = controller.playMedia(selectedMedia);
             if (success) {
                 statusLabel.setText("Now playing: " + selectedMedia.getFileName());
+                // Sikeres lejátszáskor a controller már beállította a hangerőt,
+                // de a mi csúszkánknak is tudnia kell róla (ha pl.
+                // a controllerben van egy alapértelmezett)
+                // Ezért lekérdezzük a controllerben tárolt értéket.
+                volumeSlider.setValue(controller.getVolume());
             } else {
                 statusLabel.setText("Error playing: " + selectedMedia.getFileName());
             }
@@ -432,7 +488,7 @@ public class MediaPlayerApp extends JFrame {
      * (pl. ha magától leáll a zene) és frissíti a gombot.
      */
     private void startStatusTimer() {
-        // Visszaállítottam 250ms-re, a 125ms talán túl gyakori frissítés
+        // Vacilálok hogy 250 vagy 125ms legyen, most 250
         statusTimer = new javax.swing.Timer(250, e -> { 
             // Mostantól ezt az egy metódust hívjuk, ami mindent frissít
             SwingUtilities.invokeLater(this::updateUIStatus); 
@@ -464,8 +520,8 @@ public class MediaPlayerApp extends JFrame {
                     "Confirm Delete", JOptionPane.YES_NO_OPTION);
                 
                 if (confirm == JOptionPane.YES_OPTION && controller.deleteMedia(mediaFile)) {
-                    tableModel.removeRow(selectedRow);
-                    statusLabel.setText("Deleted: " + mediaFile.getFileName());
+                    tableModel.removeRow(selectedRow); //táblázatból és
+                    statusLabel.setText("Deleted: " + mediaFile.getFileName()); //listából is töröljük
                 }
             }
         }
@@ -528,7 +584,7 @@ public class MediaPlayerApp extends JFrame {
      * ami a lejátszás állapotától függ.
      */
     private void updateUIStatus() {
-        updatePlayPauseButton(); // (Ezt már megírtuk korábban)
+        updatePlayPauseButton(); 
         updateProgressBar();
     }
 

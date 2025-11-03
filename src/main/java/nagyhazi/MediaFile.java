@@ -19,7 +19,7 @@ public class MediaFile implements Serializable {
     private MediaType mediaType;
     
     public enum MediaType {
-        MP3, MP4, WAV
+        MP3, WAV
     }
     
     public MediaFile(String fileName, Path filePath, Duration duration, long fileSize, MediaType mediaType) {

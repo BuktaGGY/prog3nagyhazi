@@ -1,6 +1,6 @@
 package nagyhazi;
 
-// Importok letisztítva: BufferedInputStream, FileInputStream, SourceDataLine eltávolítva
+// Importok letisztítva
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,7 +9,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
-// ÚJ IMPORT-ok a rendszer vágólaphoz
+// ÚJ IMPORT a vágólaphoz (már megvolt)
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
@@ -27,6 +27,9 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
+// ÚJ IMPORT A HANGERŐ-SZABÁLYZÁSHOZ
+import javax.sound.sampled.FloatControl;
+
 public class MediaPlayerController {
     private List<MediaFile> mediaLibrary;
     private MediaFile currentMedia;
@@ -34,6 +37,9 @@ public class MediaPlayerController {
     private File clipboard;
     private boolean isCutOperation;
     private boolean isPaused = false;
+    
+    //VÁLTOZÓ a hangerő tárolására (alapértelmezetten 80%)
+    private int currentVolumePercent = 80;
     
     public MediaPlayerController() {
         this.mediaLibrary = new ArrayList<>();
@@ -58,7 +64,8 @@ public class MediaPlayerController {
                 return playMP3File(mediaFile);
             } else if (fileName.endsWith(".wav") || fileName.endsWith(".au") || fileName.endsWith(".aiff")) {
                 return playSupportedAudioFile(mediaFile);
-            } else {
+            }
+            else {
                 showErrorDialog("Unsupported file format: " + fileName);
                 return false;
             }
@@ -94,6 +101,9 @@ public class MediaPlayerController {
             DataLine.Info info = new DataLine.Info(Clip.class, decodedFormat);
             audioClip = (Clip) AudioSystem.getLine(info);
             audioClip.open(decodedInputStream);
+            
+            //Hangerő beállítása a lejátszás indítása előtt
+            applyCurrentVolume();
             
             // Listener a lejátszás végére
             audioClip.addLineListener(event -> {
@@ -133,6 +143,9 @@ public class MediaPlayerController {
             audioClip = AudioSystem.getClip();
             audioClip.open(audioInputStream);
             
+            //Hangerő beállítása a lejátszás indítása előtt
+            applyCurrentVolume();
+
             // Add playback completion listener
             audioClip.addLineListener(event -> {
                 if (event.getType() == LineEvent.Type.STOP && !isPaused) {
@@ -209,7 +222,75 @@ public class MediaPlayerController {
     public boolean isPaused() {
         return isPaused;
     }
+
+    // -----------------------------------------------------------------
+    // --- ÚJ METÓDUSOK A HANGERŐ KEZELÉSÉHEZ ---
+    // -----------------------------------------------------------------
+
+    /**
+     * Beállítja a hangerőt egy 0-100 közötti százalékos érték alapján.
+     * @param percent A kívánt hangerő (0 = néma, 100 = max)
+     */
+    public void setVolume(int percent) {
+        // Biztosítjuk, hogy az érték 0 és 100 között maradjon
+        this.currentVolumePercent = Math.max(0, Math.min(100, percent));
+        
+        // Alkalmazzuk a hangerőt az éppen futó (vagy szünetelő) clip-re
+        applyCurrentVolume();
+    }
     
+    /**
+     * Visszaadja a jelenleg tárolt hangerő-százalékot.
+     * (Erre az App-nak lehet szüksége, hogy szinkronizálja a csúszkát)
+     * @return A hangerő 0-100 között.
+     */
+    public int getVolume() {
+        return this.currentVolumePercent;
+    }
+
+    /**
+     * Belső segédmetódus, ami ténylegesen beállítja a hangerőt a 'FloatControl'
+     * segítségével az 'audioClip' objektumon.
+     */
+    private void applyCurrentVolume() {
+        if (audioClip != null && audioClip.isOpen()) { //csak akkor ha éppen le van játszva file
+            try {
+                // Kérjük el a 'MASTER_GAIN' vezérlőt
+                FloatControl gainControl = (FloatControl) audioClip.getControl(FloatControl.Type.MASTER_GAIN);
+                
+                float minDB = gainControl.getMinimum(); // Min hangerő (pl. -80.0 dB)Olyan p
+                float maxDB = gainControl.getMaximum(); // Max hangerő (pl. 6.02 dB)
+                float dbRange = maxDB - minDB;
+                
+                float gain;
+                if (currentVolumePercent == 0) {
+                    gain = minDB; // Némítás (minimum dB)
+                } else {
+                    // Lineárisan skálázzuk a 0-100% értéket a dB tartományra
+                    gain = (dbRange * (currentVolumePercent / 100.0f)) + minDB;
+                }
+                
+                // Biztosítjuk, hogy az érték a tartományon belül maradjon
+                gain = Math.max(minDB, Math.min(maxDB, gain));
+                
+                gainControl.setValue(gain);
+                System.out.println("Volume set to " + currentVolumePercent + "% -> " + gain + " dB");
+
+            } catch (IllegalArgumentException e) {
+                // Ez a hiba akkor jöhet, ha a MASTER_GAIN nem támogatott
+                System.err.println("Volume control (MASTER_GAIN) not supported: " + e.getMessage());
+            } catch (Exception e) {
+                // Egyéb váratlan hiba
+                System.err.println("Error setting volume: " + e.getMessage());
+            }
+        }
+    }
+
+
+    // -----------------------------------------------------------------
+    // --- FÁJL MŰVELETEK (VÁGÁSOLÁS, BEILLESZTÉS STB.) ---
+    // -----------------------------------------------------------------
+
     public boolean deleteMedia(MediaFile mediaFile) {
         try {
             Files.deleteIfExists(mediaFile.getFilePath());
@@ -252,10 +333,6 @@ public class MediaPlayerController {
     }
     
     /**
-     * MODOSÍTOTT METÓDUS:
-     * Beilleszt fájl(oka)t a célmappába.
-     * Először a rendszer vágólapját ellenőrzi. Ha ott van(nak) fájl(ok),
-     * azt/azokat másolja be.
      * Ha a rendszer vágólapja üres vagy nem fájl(oka)t tartalmaz,
      * akkor a program belső vágólapját (copy/cut) használja.
      * * @param destinationDir A célmappa (pl. a "media" mappa)
@@ -305,7 +382,7 @@ public class MediaPlayerController {
     }
 
     /**
-     * ÚJ PRIVÁT METÓDUS:
+     * ÚJ PRIVÁT METÓDUS: (A korábbi, külső vágólapos)
      * A korábbi 'pasteMedia' logikája, amely egyetlen fájlt kezel,
      * beleértve az átnevezést ütközés esetén és a "Cut" műveletet.
      * * @param sourceFile A forrásfájl (a vágólapról)

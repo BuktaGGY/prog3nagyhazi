@@ -200,17 +200,30 @@ public class MediaPlayerController {
         }
         currentMedia = null;
     }
+
+    public void seekTo(long positionInMillis){
+        if(audioClip != null && audioClip.isOpen()){ //ha meg van nyitva audioclip
+            long microSeconds = positionInMillis * 1000; //mert milisec-ben adtuk meg
+
+            //ne ugorjunk a zene hosszán tul
+            if(microSeconds > audioClip.getMicrosecondLength()){
+                microSeconds = audioClip.getMicrosecondLength();
+            }
+
+            audioClip.setMicrosecondPosition(microSeconds); //tenyleges beallitas
+        }
+    }
     
     public long getCurrentPosition() {
         if (audioClip != null) {
-            return audioClip.getMicrosecondPosition() / 1000; // Convert to milliseconds
+            return audioClip.getMicrosecondPosition() / 1000; 
         }
         return 0;
     }
     
     public long getDuration() {
         if (audioClip != null) {
-            return audioClip.getMicrosecondLength() / 1000; // Convert to milliseconds
+            return audioClip.getMicrosecondLength() / 1000;
         }
         return 0;
     }

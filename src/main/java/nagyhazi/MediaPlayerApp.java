@@ -37,10 +37,11 @@ import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
-// ÚJ IMPORT-ok a JSlider és a ChangeListener számára
 import javax.swing.JSlider;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.ChangeEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class MediaPlayerApp extends JFrame {
     private MediaPlayerController controller;
@@ -50,7 +51,10 @@ public class MediaPlayerApp extends JFrame {
     private javax.swing.Timer statusTimer; // Időzítő a gomb állapotának frissítéséhez
     private JLabel statusLabel;
     private JScrollPane scrollPane;
-    private JProgressBar progressBar;
+    //private JProgressBar progressBar;
+    private JSlider progressSlider;
+    private boolean isSeeking = false;
+    private JLabel timeLabel;
     
     private JSlider volumeSlider;
     
@@ -131,12 +135,47 @@ public class MediaPlayerApp extends JFrame {
         JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         statusPanel.add(statusLabel);
 
+        /* 
         // Progress bar létrehozása
         progressBar = new JProgressBar(0, 100); // Kezdeti min/max
         progressBar.setStringPainted(true);
         progressBar.setString("00:00 / 00:00");
+        */
+
+        timeLabel = new JLabel("00:00 / 00:00");
+
+
+        progressSlider = new JSlider(0, 100, 0);
+        progressSlider.setValue(0);
+        progressSlider.setToolTipText("Seek");
+        progressSlider.addMouseListener(new MouseAdapter(){
+            @Override
+            public void mousePressed(MouseEvent e){ //azért, hogy ne ugraljon a slider ha eppen tekerunk
+                isSeeking = true;
+
+                //kiszamoljuk hova kattintunk
+                JSlider slider = (JSlider) e.getSource(); //lenyegeben a ProgressSlideren csinaljuk
+                double percent = (double) e.getX() / (double) slider.getWidth(); 
+                int range = slider.getMaximum() - slider.getMinimum();
+                int newVal = (int) (slider.getMinimum() + (range * percent));
+
+                //beallitjuk az ujat
+                slider.setValue(newVal);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e){ //ha elengedjuk a gombot, akkor ugorjon a zene
+                isSeeking = false;
+                int seekValue = progressSlider.getValue();
+                controller.seekTo(seekValue);
+
+                updateUIStatus(); //nem mindig kell, de ha szunetelunk es akkor ugralunk akor is frissuljon
+            }
+            
+        });
+
         
-        // --- ÚJ RÉSZ: Hangerő-szabályzó ---
+        // Hangerő-szabályzó ---
         volumeSlider = new JSlider(0, 100, 80); // Min, Max, Kezdőérték (80%)
         volumeSlider.setToolTipText("Volume");
         
@@ -164,8 +203,9 @@ public class MediaPlayerApp extends JFrame {
         // Létrehozunk egy új panelt a déli (SOUTH) részre
         JPanel southPanel = new JPanel(new BorderLayout());
         southPanel.add(bottomControlsPanel, BorderLayout.NORTH); // Gombok fent
-        southPanel.add(progressBar, BorderLayout.CENTER);      // Progress bar középen
+        southPanel.add(progressSlider, BorderLayout.CENTER);      // Progress slider középen
         southPanel.add(statusPanel, BorderLayout.SOUTH);       // Státusz szöveg lent
+        southPanel.add(timeLabel, BorderLayout.SOUTH);
         
         // Table setup
         String[] columnNames = {"File Name", "Type", "Duration", "Size"};
@@ -580,33 +620,33 @@ public class MediaPlayerApp extends JFrame {
         }
     }
     /**
-     * Ez az új "gyűjtő" metódus frissíti az összes UI elemet,
+     * Ez az "gyűjtő" metódus frissíti az összes UI elemet,
      * ami a lejátszás állapotától függ.
      */
     private void updateUIStatus() {
         updatePlayPauseButton(); 
-        updateProgressBar();
+        updateProgressSlider();
     }
 
     /**
      * Frissíti a progress bar állapotát és szövegét.
      */
-    private void updateProgressBar() {
+    private void updateProgressSlider() {
         // Csak akkor frissítünk, ha a zene megy vagy szünetel
         if (controller.isPlaying() || controller.isPaused()) {
             long current = controller.getCurrentPosition();
             long duration = controller.getDuration();
             
             if (duration > 0) {
-                progressBar.setMaximum((int) duration);
-                progressBar.setValue((int) current);
-                progressBar.setString(formatTime(current) + " / " + formatTime(duration));
+                progressSlider.setMaximum((int) duration);
+                progressSlider.setValue((int) current);
+                //progressSlider.setString(formatTime(current) + " / " + formatTime(duration)); ez nem jo mert sliderre nem lehet irni
+
+                timeLabel.setText(formatTime(current) + " /  " + formatTime(duration));
             }
         } else {
             // Ha semmi sem megy, nullázzuk a bart
-            progressBar.setValue(0);
-            progressBar.setMaximum(100); // Alapértelmezett max
-            progressBar.setString("00:00 / 00:00");
+            progressSlider.setValue(0);
         }
     }
     

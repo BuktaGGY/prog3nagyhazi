@@ -4,78 +4,43 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-
-import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
-import javax.swing.AbstractAction;
-import javax.swing.Action;
-import javax.swing.JButton;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
-import javax.swing.JProgressBar;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.KeyStroke;
-import javax.swing.ListSelectionModel;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.JSlider;
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ChangeEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 
+
+//CSAK A FELHASZNÁLÓVAL FOGLALKOZIK, NEM TUDJA HOGYAN KELL ZENÉT LEJÁTSZANI
+//TOVÁBBÍTJA A KÉRÉST
 public class MediaPlayerApp extends JFrame {
     private MediaPlayerController controller;
     private JTable mediaTable;
     private DefaultTableModel tableModel;
     private JButton playPauseButton, stopButton;
-    private javax.swing.Timer statusTimer; // Időzítő a gomb állapotának frissítéséhez
-    private JLabel statusLabel;
-    private JScrollPane scrollPane;
-    //private JProgressBar progressBar;
-    private JSlider progressSlider;
+    private Timer statusTimer;
+    private JLabel statusLabel, timeLabel;
+    private JSlider progressSlider, volumeSlider;
     private boolean isSeeking = false;
-    private JLabel timeLabel;
     
-    private JSlider volumeSlider;
+    private static final String MEDIA_FOLDER = "media";
     
-    private final String MEDIA_FOLDER = "media";
-    private Action deleteAction, copyAction, pasteAction, cutAction;
-    
-    public MediaPlayerApp() {
+    public MediaPlayerApp() { //konstruktor
         controller = new MediaPlayerController();
-
         initializeUI();
-        createKeyboardShortcuts();
         loadMediaFromFolder();
         startStatusTimer();
     }
     
-    private void initializeUI() {
+    private void initializeUI() { //felulet inicializalasa
         setTitle("Media Player");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(800, 600);
         setLocationRelativeTo(null);
-        
         createMenuBar();
         createMainPanel();
     }
@@ -85,586 +50,297 @@ public class MediaPlayerApp extends JFrame {
         JMenu fileMenu = new JMenu("File");
         
         JMenuItem openItem = new JMenuItem("Open Files");
-        openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
+        openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK)); //CTRL + O
         openItem.addActionListener(e -> openMediaFile());
         
         JMenuItem refreshItem = new JMenuItem("Refresh Media Folder");
-        refreshItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
+        refreshItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0)); //F5
         refreshItem.addActionListener(e -> loadMediaFromFolder());
         
-        JMenuItem exitItem = new JMenuItem("Exit");
-        exitItem.addActionListener(e -> System.exit(0));
+        //JMenuItem exitItem = new JMenuItem("Exit"); van egy x gombunk amivel bezárjuk, szóval felesleges
+        //exitItem.addActionListener(e -> System.exit(0));
         
         fileMenu.add(openItem);
         fileMenu.add(refreshItem);
         fileMenu.addSeparator();
-        fileMenu.add(exitItem);
-        menuBar.add(fileMenu);
-        setJMenuBar(menuBar);
+        //fileMenu.add(exitItem);
+        menuBar.add(fileMenu); //maga a menü 
+        setJMenuBar(menuBar); //az egész menü bár beállítása
     }
     
     private void createMainPanel() {
         JPanel mainPanel = new JPanel(new BorderLayout());
         
-        // Control panel (kommentben marad, ahogy nálad is volt)
-        // JPanel controlPanel = new JPanel();
-        
-        // Gomb létrehozása szöveggel
-        playPauseButton = new JButton("Play"); 
-        
-        // Ikonos beállítások eltávolítva
-        // if (playIcon != null) { ... }
-        // playPauseButton.setPreferredSize(new Dimension(60, 60));
-        // playPauseButton.setBorderPainted(false);
-        // playPauseButton.setContentAreaFilled(false);
-        
+        playPauseButton = new JButton("Play");
         stopButton = new JButton("Stop");
         
-        
-        // Új, okosabb ActionListener
-        playPauseButton.addActionListener(e -> handlePlayPause()); 
-        
-        // A Stop gombnak is frissítenie kell a Play gomb szövegét
+        playPauseButton.addActionListener(e -> handlePlayPause());
         stopButton.addActionListener(e -> {
             controller.stopCurrentMedia();
-            updatePlayPauseButton(); // <<< Ezt add hozzá
+            updatePlayPauseButton();
         });
         
-        // Status panel
         statusLabel = new JLabel("Ready");
-        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        statusPanel.add(statusLabel);
-
-        /* 
-        // Progress bar létrehozása
-        progressBar = new JProgressBar(0, 100); // Kezdeti min/max
-        progressBar.setStringPainted(true);
-        progressBar.setString("00:00 / 00:00");
-        */
-
         timeLabel = new JLabel("00:00 / 00:00");
-
-
+        
+        // --- PROGRESS SLIDER ---
         progressSlider = new JSlider(0, 100, 0);
-        progressSlider.setValue(0);
         progressSlider.setToolTipText("Seek");
-        progressSlider.addMouseListener(new MouseAdapter(){
+        progressSlider.addMouseListener(new MouseAdapter() {
             @Override
-            public void mousePressed(MouseEvent e){ //azért, hogy ne ugraljon a slider ha eppen tekerunk
+            public void mousePressed(MouseEvent e) {
                 isSeeking = true;
-
-                //kiszamoljuk hova kattintunk
-                JSlider slider = (JSlider) e.getSource(); //lenyegeben a ProgressSlideren csinaljuk
-                double percent = (double) e.getX() / (double) slider.getWidth(); 
-                int range = slider.getMaximum() - slider.getMinimum();
+                JSlider slider = (JSlider) e.getSource(); //ez maga a progressSlider
+                double percent = (double) e.getX() / (double) slider.getWidth(); //a csuszka hány százalékánál vagyunk
+                int range = slider.getMaximum() - slider.getMinimum(); //csúszka tartománya
                 int newVal = (int) (slider.getMinimum() + (range * percent));
-
-                //beallitjuk az ujat
-                slider.setValue(newVal);
+                
+                SwingUtilities.invokeLater(() -> slider.setValue(newVal)); //azért, hogy a csúszka odaugorjon pont ahol felengedtük az egeret, be-
+                                                                           //állítjuk a csúszka értékét (szálbiztos)
             }
-
             @Override
-            public void mouseReleased(MouseEvent e){ //ha elengedjuk a gombot, akkor ugorjon a zene
-                isSeeking = false;
+            public void mouseReleased(MouseEvent e) { //amikor felengedjük az egeret
                 int seekValue = progressSlider.getValue();
-                controller.seekTo(seekValue);
-
-                updateUIStatus(); //nem mindig kell, de ha szunetelunk es akkor ugralunk akor is frissuljon
+                controller.seekTo(seekValue); //magát a zenét odatekeri
+                
+                Timer resumeTimer = new Timer(200, evt -> isSeeking = false); //kevés késleltetés a programnak
+                resumeTimer.setRepeats(false);
+                resumeTimer.start();
+                updateUIStatus();
             }
-            
         });
 
-        
-        // Hangerő-szabályzó ---
-        volumeSlider = new JSlider(0, 100, 80); // Min, Max, Kezdőérték (80%)
+        // --- VOLUME SLIDER ---
+        volumeSlider = new JSlider(0, 100, 80);
         volumeSlider.setToolTipText("Volume");
-        
-        // Listener, ami figyeli a csúszka változását
-        volumeSlider.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                // Csak akkor frissíts, ha a felhasználó "elengedte" a csúszkát
-                // (vagy ha nem kattintva állítja). Ez megakadályozza a túl sok eseményt.
-                //if (volumeSlider.getValueIsAdjusting()) { ezt még eldöntöm hogy lesz ha nagyon nem tetszik neki hogy sok az event akkor kikommentelem
-                    int volumePercent = volumeSlider.getValue();
-                    controller.setVolume(volumePercent);
-                //}
-            }
+        volumeSlider.addChangeListener(e -> {
+             controller.setVolume(volumeSlider.getValue());
         });
 
-        
-        // A lejátszás vezérlő gombokat külön panelbe tesszük
         JPanel bottomControlsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         bottomControlsPanel.add(playPauseButton);
         bottomControlsPanel.add(stopButton);
         bottomControlsPanel.add(new JLabel("Volume:"));
-        bottomControlsPanel.add(volumeSlider); 
+        bottomControlsPanel.add(volumeSlider);
 
-        // Létrehozunk egy új panelt a déli (SOUTH) részre
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusPanel.add(statusLabel, BorderLayout.WEST);
+        statusPanel.add(timeLabel, BorderLayout.EAST);
+
         JPanel southPanel = new JPanel(new BorderLayout());
-        southPanel.add(bottomControlsPanel, BorderLayout.NORTH); // Gombok fent
-        southPanel.add(progressSlider, BorderLayout.CENTER);      // Progress slider középen
-        southPanel.add(statusPanel, BorderLayout.SOUTH);       // Státusz szöveg lent
-        southPanel.add(timeLabel, BorderLayout.SOUTH);
+        southPanel.add(bottomControlsPanel, BorderLayout.NORTH);
+        southPanel.add(progressSlider, BorderLayout.CENTER);
+        southPanel.add(statusPanel, BorderLayout.SOUTH);
         
-        // Table setup
-        String[] columnNames = {"File Name", "Type", "Duration", "Size"};
-        tableModel = new DefaultTableModel(columnNames, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
+        // --- TABLE ---
+        tableModel = new DefaultTableModel(new String[]{"File Name", "Type", "Duration", "Size"}, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; } //ne lehessen módosítani
         };
         mediaTable = new JTable(tableModel);
-        mediaTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        mediaTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); //egyszerre egyet lehessen kijelölni
+        mediaTable.setComponentPopupMenu(createTableContextMenu()); //kontext menü: copy, paste stb
         
-        // Context menus
-        JPopupMenu tableContextMenu = createTableContextMenu();
-        JPopupMenu backgroundContextMenu = createBackgroundContextMenu();
-        mediaTable.setComponentPopupMenu(tableContextMenu);
+        JScrollPane scrollPane = new JScrollPane(mediaTable); //görgető, ha sok zene van
+        scrollPane.setComponentPopupMenu(createBackgroundContextMenu()); //jobbklikkes menü ha nem zeneszámra kattintunk
         
-        scrollPane = new JScrollPane(mediaTable);
-        scrollPane.setComponentPopupMenu(backgroundContextMenu);
-        
-        //mainPanel.add(controlPanel, BorderLayout.NORTH); // Kommentelve marad
         mainPanel.add(scrollPane, BorderLayout.CENTER);
         mainPanel.add(southPanel, BorderLayout.SOUTH);
-        
         add(mainPanel);
     }
-    
-    private void createKeyboardShortcuts() {
-        deleteAction = new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { deleteSelectedMedia(); }
-        };
-        copyAction = new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { copySelectedMedia(); }
-        };
-        pasteAction = new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { pasteMedia(); }
-        };
-        cutAction = new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { cutSelectedMedia(); }
-        };
-        
-        // Table shortcuts
-        mediaTable.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "delete");
-        mediaTable.getActionMap().put("delete", deleteAction);
-        mediaTable.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_C, KeyEvent.CTRL_DOWN_MASK), "copy");
-        mediaTable.getActionMap().put("copy", copyAction);
-        mediaTable.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK), "paste");
-        mediaTable.getActionMap().put("paste", pasteAction);
-        mediaTable.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.CTRL_DOWN_MASK), "cut");
-        mediaTable.getActionMap().put("cut", cutAction);
-        
-        // Global paste shortcut
-        getRootPane().getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK), "pasteGlobal");
-        getRootPane().getActionMap().put("pasteGlobal", pasteAction);
-    }
-    
 
-    //Jobb klikk menu
-    private JPopupMenu createTableContextMenu() {
+    //KONTEXT MENÜK
+    
+    private JPopupMenu createTableContextMenu() { return createContextMenu(true); } //true ha a tablazatba kattintunk
+    private JPopupMenu createBackgroundContextMenu() { return createContextMenu(false); } //false ha a hatterbe kattintunk
+    
+    private JPopupMenu createContextMenu(boolean onTable) { //kontext (jobb klikk) men
         JPopupMenu menu = new JPopupMenu();
-        
-        JMenuItem playItem = new JMenuItem("Play");
-        JMenuItem deleteItem = new JMenuItem("Delete");
-        JMenuItem renameItem = new JMenuItem("Rename");
-        JMenuItem copyItem = new JMenuItem("Copy");
-        JMenuItem cutItem = new JMenuItem("Cut");
-        JMenuItem pasteItem = new JMenuItem("Paste");
-        
-        playItem.addActionListener(e -> handlePlayPause());
-        deleteItem.addActionListener(e -> deleteSelectedMedia());
-        renameItem.addActionListener(e -> renameSelectedMedia());
-        copyItem.addActionListener(e -> copySelectedMedia());
-        cutItem.addActionListener(e -> cutSelectedMedia());
-        pasteItem.addActionListener(e -> pasteMedia());
-        
-        deleteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0));
-        copyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, KeyEvent.CTRL_DOWN_MASK));
-        cutItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.CTRL_DOWN_MASK));
-        pasteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK));
-        
-        menu.add(playItem);
-        menu.addSeparator();
-        menu.add(deleteItem);
-        menu.add(renameItem);
-        menu.addSeparator();
-        menu.add(copyItem);
-        menu.add(cutItem);
-        menu.add(pasteItem);
-        
+        if (onTable) { //csak ha a tablazatba belekattintunk
+            JMenuItem play = new JMenuItem("Play");
+            play.addActionListener(e -> handlePlayPause());
+            menu.add(play);
+            
+            JMenuItem del = new JMenuItem("Delete");
+            del.addActionListener(e -> deleteSelectedMedia());
+            menu.add(del);
+            
+            JMenuItem copy = new JMenuItem("Copy");
+            copy.addActionListener(e -> controller.copyMedia(controller.getMediaLibrary().get(mediaTable.getSelectedRow())));
+            menu.add(copy);
+            
+             JMenuItem cut = new JMenuItem("Cut");
+            cut.addActionListener(e -> controller.cutMedia(controller.getMediaLibrary().get(mediaTable.getSelectedRow())));
+            menu.add(cut);
+        }
+        JMenuItem paste = new JMenuItem("Paste");
+        paste.addActionListener(e -> pasteMedia());
+        menu.add(paste);
         return menu;
     }
-    
-    //Jobbklikk menu
-    private JPopupMenu createBackgroundContextMenu() {
-        JPopupMenu menu = new JPopupMenu();
-        
-        JMenuItem pasteItem = new JMenuItem("Paste");
-        JMenuItem refreshItem = new JMenuItem("Refresh");
-        JMenuItem openItem = new JMenuItem("Open Files");
-        
-        pasteItem.addActionListener(e -> pasteMedia());
-        refreshItem.addActionListener(e -> loadMediaFromFolder());
-        openItem.addActionListener(e -> openMediaFile());
-        
-        pasteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK));
-        refreshItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
-        openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
-        
-        menu.add(pasteItem);
-        menu.addSeparator();
-        menu.add(refreshItem);
-        menu.add(openItem);
-        
-        return menu;
-    }
-    
+
+    //LISTA BETÖLTÉS
+
     private void loadMediaFromFolder() {
-        controller.getMediaLibrary().clear();
+        controller.getMediaLibrary().clear(); //nullázás
         tableModel.setRowCount(0);
         
-        File mediaDir = new File(MEDIA_FOLDER);
+        File mediaDir = new File(MEDIA_FOLDER); //media mappánk
         if (!mediaDir.exists()) {
-            statusLabel.setText("Media folder not found: " + MEDIA_FOLDER);
-            if (mediaDir.mkdirs()) {
-                JOptionPane.showMessageDialog(this, "Created media folder. Add WAV files to: " + mediaDir.getAbsolutePath());
-            }
-            return;
+            mediaDir.mkdirs(); //ha nincs akkor csinálunk egyet
         }
         
         File[] mediaFiles = mediaDir.listFiles((dir, name) -> 
-            name.toLowerCase().endsWith(".wav") || 
-            name.toLowerCase().endsWith(".mp3") ||
-            name.toLowerCase().endsWith(".mp4")
-        );
+            name.toLowerCase().endsWith(".wav") || name.toLowerCase().endsWith(".mp3")); //megnézi, hogy .wav vagy .mp3 a fileok, a többi nem kell
         
-        if (mediaFiles == null || mediaFiles.length == 0) {
-            statusLabel.setText("No media files found");
-            JOptionPane.showMessageDialog(this, "No media files found. Please add WAV, MP3, or MP4 files to the media folder.");
-            return;
+        if (mediaFiles != null) {
+            for (File file : mediaFiles) addMediaFile(file.toPath()); //hozzáadás, minden filera külön
+            statusLabel.setText("Loaded " + mediaFiles.length + " files");
         }
-        
-        int loadedCount = 0;
-        for (File file : mediaFiles) {
-            if (addMediaFile(file.toPath())) {
-                loadedCount++;
-            }
-        }
-        
-        statusLabel.setText("Loaded " + loadedCount + " media files");
-    }
-    
-    private Duration getWavDuration(Path filePath) {
-        AudioInputStream audioInputStream = null;
-        try {
-            audioInputStream = AudioSystem.getAudioInputStream(filePath.toFile());
-            AudioFormat format = audioInputStream.getFormat();
-            long frames = audioInputStream.getFrameLength();
-            float frameRate = format.getFrameRate();
-            
-            if (frames != AudioSystem.NOT_SPECIFIED && frameRate != AudioSystem.NOT_SPECIFIED) {
-                double durationInSeconds = frames / frameRate;
-                return Duration.ofSeconds((long) durationInSeconds);
-            }
-        } catch (UnsupportedAudioFileException | IOException e) {
-            System.err.println("Error reading WAV duration: " + e.getMessage());
-        } finally {
-            if (audioInputStream != null) {
-                try {
-                    audioInputStream.close();
-                } catch (IOException e) {
-                    System.err.println("Error closing audio stream: " + e.getMessage());
-                }
-            }
-        }
-        return Duration.ofMinutes(3).plusSeconds(30); 
     }
 
-    
-    private Duration getMP3Duration(Path filePath) {
-        try {
-            AudioFileFormat fileFormat = AudioSystem.getAudioFileFormat(filePath.toFile());
-            Map<String, Object> properties = fileFormat.properties();
-
-            if(properties.containsKey("duration")){ //keresünk egy "duration" kulcsot és az ahhoz tartozó érték kell
-                long microseconds = (Long) properties.get("duration");
-                return Duration.ofNanos(microseconds * 1000);
-            }
-        } catch (Exception e) {
-            System.err.println("Error reading mediafile duration +" + e.getMessage());
-        }
-
-        //ha nem sikerült, akkor ez legyen default
-        return Duration.ofMinutes(3).plusSeconds(30);
-    }
-    
     private boolean addMediaFile(Path filePath) {
         try {
-            String fileName = filePath.getFileName().toString();
-            String lowerName = fileName.toLowerCase();
-            MediaFile.MediaType type;
-            Duration duration;
+            String lowerName = filePath.getFileName().toString().toLowerCase();
+            MediaFile.MediaType type = lowerName.endsWith(".mp3") ? MediaFile.MediaType.MP3 : MediaFile.MediaType.WAV; //ha mp3 akkor ugy irjuk be, ha wav akkor meg ugy
             
-            if (lowerName.endsWith(".wav")) {
-                type = MediaFile.MediaType.WAV;
-                duration = getWavDuration(filePath);
-            } else if (lowerName.endsWith(".mp3")) {
-                type = MediaFile.MediaType.MP3;
-                duration = getMP3Duration(filePath); 
-            } else {
-                return false;
-            }
+            Duration duration = MediaMetadataReader.getDuration(filePath);
             
-            long fileSize = Files.size(filePath);
-            MediaFile mediaFile = new MediaFile(fileName, filePath, duration, fileSize, type);
-            controller.addMediaFile(mediaFile);
+            MediaFile mediaFile = new MediaFile( //objektum letrehozasa
+                filePath.getFileName().toString(),
+                filePath,
+                duration,
+                Files.size(filePath),
+                type
+            );
             
-            tableModel.addRow(new Object[]{
+            controller.addMediaFile(mediaFile); //controllerbe is belerakjuk a filet
+            tableModel.addRow(new Object[]{ //táblázathoz hozzáadunk egy sort, ami a file adatit tartalmazza
                 mediaFile.getFileName(),
-                mediaFile.getMediaType().toString(),
+                mediaFile.getMediaType(),
                 mediaFile.getFormattedDuration(),
                 mediaFile.getFormattedFileSize()
             });
-            
-            return true;
+            return true; //siker
         } catch (Exception e) {
-            System.err.println("Error adding file " + filePath + ": " + e.getMessage());
-            return false;
+            System.err.println("Error adding file: " + e.getMessage());
+            return false; //sikertelen
         }
     }
 
-    private void openMediaFile() {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setMultiSelectionEnabled(true);
-        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
-            "Media Files", "wav", "mp3", "mp4"));
-        
-        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            for (java.io.File selectedFile : fileChooser.getSelectedFiles()) {
-                try {
-                    // Copy file to media folder
-                    Path sourcePath = selectedFile.toPath();
-                    Path targetPath = Paths.get(MEDIA_FOLDER, sourcePath.getFileName().toString());
-                    
-                    // If file already exists in media folder, ask for confirmation
-                    if (Files.exists(targetPath)) {
-                        int overwrite = JOptionPane.showConfirmDialog(this,
-                            "File '" + sourcePath.getFileName() + "' already exists in media folder. Overwrite?",
-                            "File Exists", JOptionPane.YES_NO_OPTION);
-                        
-                        if (overwrite != JOptionPane.YES_OPTION) {
-                            continue; // Skip this file
-                        }
-                    }
-                    
-                    // Copy the file to media folder
-                    Files.copy(sourcePath, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    
-                    // Add the copied file to the library (this automatically updates the table)
-                    addMediaFile(targetPath);
-                    
-                    statusLabel.setText("Added: " + targetPath.getFileName());
-                    
-                } catch (Exception e) {
-                    JOptionPane.showMessageDialog(this,
-                        "Error copying file '" + selectedFile.getName() + "': " + e.getMessage(),
-                        "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        }
-    }
-    
-    private void handlePlayPause() {
+    //BUTTON & PLAYBACK HANDLERS
+
+    private void handlePlayPause() {//!!mindig lefut ha megnyomjuk a PLAY/PAUSE gombot
         int selectedRow = mediaTable.getSelectedRow();
-        if (selectedRow < 0) {
-            // Ha semmi nincs kiválasztva, de valami szünetel, folytatjuk
-            if (controller.isPaused()) {
-                 controller.resumeMedia();
-                 statusLabel.setText("Resumed: " + controller.getCurrentMedia().getFileName());
-            } else {
-                JOptionPane.showMessageDialog(this, "Válassz ki egy fájlt a lejátszáshoz");
+        if (selectedRow < 0) { //ki van e jelölve sor
+            if (controller.isPaused()) { //ez azért, ha nincs kijelölve sor és meg van állítva, ne kelljen a sorra kattintani, hogy folytassuk a lejátszást
+                controller.resumeMedia();
             }
-            updatePlayPauseButton();
+            updatePlayPauseButton(); //frissítjük a gombot
             return;
         }
         
-        MediaFile selectedMedia = controller.getMediaLibrary().get(selectedRow);
-        MediaFile currentMedia = controller.getCurrentMedia();
+        MediaFile selectedMedia = controller.getMediaLibrary().get(selectedRow); //kijelölt
+        MediaFile currentMedia = controller.getCurrentMedia(); //éppen játszó
         
-        // 1. Eset: Folytatás (A zene szünetel ÉS ugyanaz a szám van kiválasztva)
-        if (controller.isPaused() && selectedMedia.equals(currentMedia)) {
-            controller.resumeMedia();
+        if (controller.isPaused() && selectedMedia.equals(currentMedia)) { //ha meg van állítva, és ki van jelölve
+            controller.resumeMedia(); //folytassa
             statusLabel.setText("Resumed: " + selectedMedia.getFileName());
-        
-        // 2. Eset: Szünet (A zene megy ÉS ugyanaz a szám van kiválasztva)
-        } else if (controller.isPlaying() && selectedMedia.equals(currentMedia)) {
-            controller.pauseMedia();
+        } else if (controller.isPlaying() && selectedMedia.equals(currentMedia)) { //ha játszódik, ls ki van jelölve
+            controller.pauseMedia(); //állítsa meg
             statusLabel.setText("Paused: " + selectedMedia.getFileName());
-        
-        // 3. Eset: Új lejátszás (Másik szám van kiválasztva, vagy semmi sem megy)
-        } else {
-
-            boolean success = controller.playMedia(selectedMedia);
-            if (success) {
-                statusLabel.setText("Now playing: " + selectedMedia.getFileName());
-                // Sikeres lejátszáskor a controller már beállította a hangerőt,
-                // de a mi csúszkánknak is tudnia kell róla (ha pl.
-                // a controllerben van egy alapértelmezett)
-                // Ezért lekérdezzük a controllerben tárolt értéket.
-                volumeSlider.setValue(controller.getVolume());
-            } else {
-                statusLabel.setText("Error playing: " + selectedMedia.getFileName());
+        } else { //ha nem játszódik semmi
+            if (controller.playMedia(selectedMedia)) { //nem történik semmi, ha nincs semmi kijelölve
+                statusLabel.setText("Playing: " + selectedMedia.getFileName());
             }
         }
-        
-        updatePlayPauseButton(); // Azonnal frissítjük a gombot
+        updatePlayPauseButton();
     }
     
-    /**
-     * Elindít egy időzítőt, ami figyeli a lejátszó állapotát
-     * (pl. ha magától leáll a zene) és frissíti a gombot.
-     */
     private void startStatusTimer() {
-        // Vacilálok hogy 250 vagy 125ms legyen, most 250
-        statusTimer = new javax.swing.Timer(250, e -> { 
-            // Mostantól ezt az egy metódust hívjuk, ami mindent frissít
-            SwingUtilities.invokeLater(this::updateUIStatus); 
-        });
-        statusTimer.setRepeats(true);
+        statusTimer = new Timer(250, e -> SwingUtilities.invokeLater(this::updateUIStatus)); //frissítjük az UI-t, masodpercenként négyszer
+                                                                                                    //invokeLater, akkor fusson ha az biztonságos (szálbiztos)
         statusTimer.start();
     }
     
-    /**
-     * Frissíti a Play/Pause gomb szövegét a controller állapota alapján.
-     */
-    private void updatePlayPauseButton() {
-        if (controller.isPlaying()) {
-            playPauseButton.setText("Pause"); // Visszaállítva szövegre
-        } else {
-            // Akkor is "Play" ha szünetel, vagy ha teljesen leállt
-            playPauseButton.setText("Play"); // Visszaállítva szövegre
-        }
-    }
-    
-    private void deleteSelectedMedia() {
-        int selectedRow = mediaTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            List<MediaFile> library = controller.getMediaLibrary();
-            if (selectedRow < library.size()) {
-                MediaFile mediaFile = library.get(selectedRow);
-                int confirm = JOptionPane.showConfirmDialog(this, 
-                    "Delete " + mediaFile.getFileName() + " from library?",
-                    "Confirm Delete", JOptionPane.YES_NO_OPTION);
-                
-                if (confirm == JOptionPane.YES_OPTION && controller.deleteMedia(mediaFile)) {
-                    tableModel.removeRow(selectedRow); //táblázatból és
-                    statusLabel.setText("Deleted: " + mediaFile.getFileName()); //listából is töröljük
-                }
+    private void updateUIStatus() {
+        updatePlayPauseButton();
+        if (!isSeeking && (controller.isPlaying() || controller.isPaused())) {
+            long current = controller.getCurrentPosition();
+            long duration = controller.getDuration();
+            if (duration > 0) {
+                progressSlider.setMaximum((int) duration); //maximum beállítása
+                progressSlider.setValue((int) current); //pontos érték beállítása
+                timeLabel.setText(formatTime(current) + " / " + formatTime(duration)); //ki is írjuk, hogy éppen hol tartunk
             }
+        } else if (!controller.isPlaying() && !controller.isPaused()) {
+            progressSlider.setValue(0);
+        }
+    }
+
+    private void updatePlayPauseButton() {//gomb felirat frissítése
+        playPauseButton.setText(controller.isPlaying() ? "Pause" : "Play"); //ha játszik akkor play, ha nem akkor pause
+    }
+
+    private String formatTime(long millis) {
+        long s = millis / 1000;
+        return String.format("%02d:%02d", s / 60, s % 60);
+    }
+
+    //MENÜ, SHORTCUT
+
+    private void deleteSelectedMedia() { //törlés
+        int row = mediaTable.getSelectedRow();
+        if (row >= 0) {
+             MediaFile mf = controller.getMediaLibrary().get(row);
+             if (controller.deleteMedia(mf)) {
+                 tableModel.removeRow(row);
+                 statusLabel.setText("Deleted: " + mf.getFileName());
+             }
+        }
+    }
+
+    private void copySelectedMedia() { //másolás
+        int selectedRow = mediaTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            MediaFile mediaFile = controller.getMediaLibrary().get(selectedRow);
+            controller.copyMedia(mediaFile);
+            statusLabel.setText("Copied: " + mediaFile.getFileName());
+        }
+    }
+
+    private void cutSelectedMedia() { //vágás
+        int selectedRow = mediaTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            MediaFile mediaFile = controller.getMediaLibrary().get(selectedRow);
+            controller.cutMedia(mediaFile);
+            statusLabel.setText("Cut: " + mediaFile.getFileName());
         }
     }
     
-    private void renameSelectedMedia() {
-        int selectedRow = mediaTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            List<MediaFile> library = controller.getMediaLibrary();
-            if (selectedRow < library.size()) {
-                MediaFile mediaFile = library.get(selectedRow);
-                String newName = JOptionPane.showInputDialog(this, "Enter new name:", mediaFile.getFileName());
-                if (newName != null && !newName.trim().isEmpty() && controller.renameMedia(mediaFile, newName)) {
-                    tableModel.setValueAt(newName, selectedRow, 0);
-                    statusLabel.setText("Renamed to: " + newName);
-                }
-            }
-        }
-    }
     
-    private void copySelectedMedia() {
-        int selectedRow = mediaTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            List<MediaFile> library = controller.getMediaLibrary();
-            if (selectedRow < library.size()) {
-                MediaFile mediaFile = library.get(selectedRow);
-                controller.copyMedia(mediaFile);
-                statusLabel.setText("Copied: " + mediaFile.getFileName());
-            }
-        }
-    }
-    
-    private void cutSelectedMedia() {
-        int selectedRow = mediaTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            List<MediaFile> library = controller.getMediaLibrary();
-            if (selectedRow < library.size()) {
-                MediaFile mediaFile = library.get(selectedRow);
-                controller.cutMedia(mediaFile);
-                statusLabel.setText("Cut: " + mediaFile.getFileName());
+
+    private void openMediaFile() {
+        JFileChooser fc = new JFileChooser();
+        fc.setMultiSelectionEnabled(true);
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            for (File f : fc.getSelectedFiles()) {
+                try {
+                    Path dest = Paths.get(MEDIA_FOLDER, f.getName());
+                    Files.copy(f.toPath(), dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    addMediaFile(dest);
+                } catch (Exception ex) { ex.printStackTrace(); }
             }
         }
     }
     
     private void pasteMedia() {
-        // Közvetlenül megadjuk a célmappát a MEDIA_FOLDER konstans alapján
-        Path destinationPath = Paths.get(MEDIA_FOLDER);
-        
-        // Meghívjuk a controller pasteMedia metódusát a fix elérési úttal
-        if (controller.pasteMedia(destinationPath)) {
-            statusLabel.setText("File pasted successfully");
-            loadMediaFromFolder(); // Töltsük újra a listát, hogy megjelenjen az új fájl
-        } else {
-            // A controller már mutat hibaüzenetet, ha baj van
-            statusLabel.setText("Paste failed");
+        if (controller.pasteMedia(Paths.get(MEDIA_FOLDER))) {
+            loadMediaFromFolder();
+            statusLabel.setText("Pasted successfully");
         }
     }
-    /**
-     * Ez az "gyűjtő" metódus frissíti az összes UI elemet,
-     * ami a lejátszás állapotától függ.
-     */
-    private void updateUIStatus() {
-        updatePlayPauseButton(); 
-        updateProgressSlider();
-    }
 
-    /**
-     * Frissíti a progress bar állapotát és szövegét.
-     */
-    private void updateProgressSlider() {
-        // Csak akkor frissítünk, ha a zene megy vagy szünetel
-        if (controller.isPlaying() || controller.isPaused()) {
-            long current = controller.getCurrentPosition();
-            long duration = controller.getDuration();
-            
-            if (duration > 0) {
-                progressSlider.setMaximum((int) duration);
-                progressSlider.setValue((int) current);
-                //progressSlider.setString(formatTime(current) + " / " + formatTime(duration)); ez nem jo mert sliderre nem lehet irni
-
-                timeLabel.setText(formatTime(current) + " /  " + formatTime(duration));
-            }
-        } else {
-            // Ha semmi sem megy, nullázzuk a bart
-            progressSlider.setValue(0);
-        }
-    }
-    
-    /**
-     * Segédfüggvény: Milliszekundumokat alakít MM:SS formátumú Stringgé.
-     * @param millis A millimásodpercek száma
-     * @return Formázott idő string
-     */
-    private String formatTime(long millis) {
-        long totalSeconds = millis / 1000;
-        long minutes = totalSeconds / 60;
-        long seconds = totalSeconds % 60;
-        return String.format("%02d:%02d", minutes, seconds);
-    }
-    
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            new MediaPlayerApp().setVisible(true);
-        });
+        SwingUtilities.invokeLater(() -> new MediaPlayerApp().setVisible(true)); //kirajzolás
     }
 }

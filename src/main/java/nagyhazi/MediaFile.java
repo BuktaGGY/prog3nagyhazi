@@ -4,13 +4,8 @@ import java.io.Serializable;
 import java.nio.file.Path;
 import java.time.Duration;
 
-/**
- *
- * @author bukta
- */
-
+//MediaFile típus meghatározása
 public class MediaFile implements Serializable {
-    private static final long serialVersionUID = 1L;
     
     private String fileName;
     private Path filePath;
@@ -23,14 +18,14 @@ public class MediaFile implements Serializable {
     }
     
     public MediaFile(String fileName, Path filePath, Duration duration, long fileSize, MediaType mediaType) {
-        this.fileName = fileName;
-        this.filePath = filePath;
-        this.duration = duration;
-        this.fileSize = fileSize;
-        this.mediaType = mediaType;
+        this.fileName = fileName; //neve
+        this.filePath = filePath; //elérési útvonala
+        this.duration = duration; //hossza
+        this.fileSize = fileSize; //mérete
+        this.mediaType = mediaType; //típusa
     }
     
-    // Getters and setters
+    // Getterek és setterek
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }
     
@@ -60,7 +55,7 @@ public class MediaFile implements Serializable {
     }
     
     @Override
-    public String toString() {
+    public String toString() { //fileName getter
         return fileName;
     }
 }
